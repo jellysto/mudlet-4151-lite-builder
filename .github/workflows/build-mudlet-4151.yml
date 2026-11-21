@@ -46,6 +46,7 @@ jobs:
             mingw-w64-ucrt-x86_64-qt5-svg
             mingw-w64-ucrt-x86_64-qt5-imageformats
             mingw-w64-ucrt-x86_64-qt5-translations
+            mingw-w64-ucrt-x86_64-angleproject
             mingw-w64-ucrt-x86_64-lua51
             mingw-w64-ucrt-x86_64-pcre
             mingw-w64-ucrt-x86_64-zlib
@@ -128,7 +129,10 @@ jobs:
           cd "$REL"
 
           # Qt runtime + plugins (MSYS2 Qt5 windeployqt).
-          windeployqt-qt5 mudlet.exe
+          # windeployqt probes optional DLLs (e.g. libGLESv2/ANGLE) and returns
+          # non-zero if one is missing even when deployment otherwise succeeds;
+          # ntldd below is the authoritative dependency copy, so tolerate it.
+          windeployqt-qt5 mudlet.exe || true
 
           # Copy every non-system DLL that mudlet.exe actually depends on,
           # discovered with ntldd -R. Far more reliable than a manual list:
