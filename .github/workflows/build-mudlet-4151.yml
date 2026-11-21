@@ -58,7 +58,7 @@ jobs:
             mingw-w64-ucrt-x86_64-lua51-luafilesystem
             mingw-w64-ucrt-x86_64-lua51-lpeg
             mingw-w64-ucrt-x86_64-lua51-lsqlite3
-            mingw-w64-ucrt-x86_64-luarocks
+            mingw-w64-ucrt-x86_64-lua-luarocks
             mingw-w64-ucrt-x86_64-ntldd
 
       - name: Install extra Lua 5.1 modules (luarocks)
