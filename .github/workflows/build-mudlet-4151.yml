@@ -1,0 +1,174 @@
+name: Build Mudlet 4.15.1 Lite (NSIS Installer)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  MUDLET_TAG: Mudlet-4.15.1
+  QT_VERSION: 5.15.2
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout build config repository
+        uses: actions/checkout@v4
+        with:
+          path: build-config
+
+      - name: Checkout Mudlet 4.15.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: Mudlet/Mudlet
+          ref: ${{ env.MUDLET_TAG }}
+          path: Mudlet
+          fetch-depth: 1
+
+      - name: Install Qt 5.15.2 + MinGW 8.1 (64-bit)
+        id: qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_mingw81
+          tools: tools_mingw,qt.tools.win64_mingw810,0
+          dir: ${{ github.workspace }}\Qt
+          cache: false
+          add-tools-to-path: true
+          set-env: true
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Install native dependencies (Lua/Hunspell/PCRE/zip/zlib/pugixml/Boost/YAJL/SQLite/OpenSSL)
+        id: deps
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ws = "${{ github.workspace }}"
+          $depDir = "$ws\build-deps"
+          New-Item -ItemType Directory -Force -Path $depDir | Out-Null
+
+          # install-qt-action sets Qt5_DIR / QT_ROOT_DIR; derive base dirs from it.
+          $qtRoot = $env:Qt5_DIR
+          if (-not $qtRoot) { $qtRoot = $env:QT_ROOT_DIR }
+          if (-not $qtRoot) { throw "Qt5_DIR / QT_ROOT_DIR not set by install-qt-action" }
+          $qtBase = Split-Path -Parent $qtRoot
+          $mingwBase = Join-Path (Split-Path -Parent $qtBase) "Tools\mingw810_64"
+
+          # Export for later steps.
+          "QT_BASE_DIR=$qtBase" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MINGW_BASE_DIR=$mingwBase" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "WORKING_BASE_DIR=$depDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # Copy official helper scripts into place.
+          Copy-Item "$ws\Mudlet\CI\appveyor.functions.ps1" "$depDir\" -Force
+          Copy-Item "$ws\Mudlet\CI\appveyor.install.ps1" "$depDir\" -Force
+
+          $env:QT_BASE_DIR = $qtBase
+          $env:MINGW_BASE_DIR = $mingwBase
+          $env:WORKING_BASE_DIR = $depDir
+
+          Set-Location $depDir
+          .\appveyor.install.ps1
+
+      - name: Apply feature-disable patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Set-Location "${{ github.workspace }}"
+          python build-config\patches\apply_lite_patch.py "${{ github.workspace }}\Mudlet"
+          if ($LASTEXITCODE -ne 0) { throw "apply_lite_patch.py failed" }
+
+      - name: Build Mudlet (qmake + MinGW)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:WITH_UPDATER = "NO"
+          $env:WITH_3DMAPPER = "NO"
+          # WITH_FONTS and WITH_VARIABLE_SPLASH_SCREEN are intentionally NOT set
+          # to NO: built-in fonts and the variable splash screen are kept.
+          # WITH_OWN_QTKEYCHAIN must stay enabled (do NOT set to NO).
+
+          Set-Location "${{ github.workspace }}\Mudlet\src"
+          qmake CONFIG+=release mudlet.pro
+          if ($LASTEXITCODE -ne 0) { throw "qmake failed" }
+          mingw32-make -j ${{ env.NUMBER_OF_PROCESSORS }}
+          if ($LASTEXITCODE -ne 0) { throw "mingw32-make failed" }
+
+      - name: Deploy Qt runtime and non-Qt dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ws = "${{ github.workspace }}"
+          $releaseDir = "$ws\Mudlet\src\release"
+          Set-Location $releaseDir
+
+          # Qt libraries and plugins.
+          windeployqt.exe mudlet.exe
+
+          # Non-Qt runtime DLLs (LITE: no Hunspell, no discord-rpc).
+          # appveyor.install.ps1 drops prebuilt deps under WORKING_BASE_DIR; MinGW
+          # runtime DLLs live in MINGW_BASE_DIR\bin. Search both recursively.
+          $searchRoots = @("$env:MINGW_BASE_DIR\bin", "$env:WORKING_BASE_DIR")
+          $wanted = @(
+            "lua51.dll", "lua5.1.dll", "libpcre-1.dll", "libzip.dll", "zlib1.dll",
+            "libyaml.dll", "libcrypto-1_1.dll", "libssl-1_1.dll", "libgcc_s_seh-1.dll",
+            "libstdc++-6.dll", "libwinpthread-1.dll", "libeay32.dll", "ssleay32.dll"
+          )
+          foreach ($dll in $wanted) {
+            $found = $null
+            foreach ($root in $searchRoots) {
+              if (Test-Path $root) {
+                $hit = Get-ChildItem -Path $root -Filter $dll -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hit) { $found = $hit.FullName; break }
+              }
+            }
+            if ($found) { Copy-Item $found . -Force }
+            else { Write-Warning "Missing non-Qt DLL: $dll (searched $($searchRoots -join ', '))" }
+          }
+
+          # Mudlet runtime data.
+          Copy-Item "$ws\Mudlet\mudlet-lua" . -Recurse -Force
+          Copy-Item "$ws\Mudlet\translations\lua" "translations\lua" -Recurse -Force
+          Copy-Item "$env:MINGW_BASE_DIR\lib\lua\5.1" . -Recurse -Force
+          Copy-Item "$ws\Mudlet\3rdparty\lcf" . -Recurse -Force
+          if (Test-Path "$ws\Mudlet\LICENSE") { Copy-Item "$ws\Mudlet\LICENSE" . -Force }
+          else { "Mudlet 4.15.1 Lite - GPLv3 custom build. See https://www.gnu.org/licenses/gpl-3.0.html" | Out-File -FilePath "$releaseDir\LICENSE" -Encoding utf8 }
+          Copy-Item "$ws\Mudlet\README.md" . -Force
+          Rename-Item -Path "$releaseDir\mudlet.exe" -NewName "Mudlet.exe" -Force
+          Compress-Archive -Path "$releaseDir\*" -DestinationPath "$ws\mudlet-4.15.1-lite-portable.zip" -Force
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ws = "${{ github.workspace }}"
+          $nsi = "$ws\build-config\installer\mudlet-4.15.1-lite.nsi"
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) { $makensis = "C:\Program Files\NSIS\makensis.exe" }
+
+          # Locate Mudlet's icon so the installer has a proper icon (optional).
+          $icon = Get-ChildItem -Path "$ws\Mudlet" -Filter "mudlet.ico" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $iconArg = @()
+          if ($icon) { $iconArg = @("/DMUI_ICON_OVERRIDE=$($icon.FullName)") }
+
+          Set-Location $ws
+          & $makensis /DMUDLET_VERSION=4.15.1 /DRELEASE_DIR="$ws\Mudlet\src\release" @iconArg $nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
+
+      - name: Upload installer and portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mudlet-4.15.1-Lite-Windows
+          path: |
+            ${{ github.workspace }}\Mudlet-4.15.1-Lite-Setup.exe
+            ${{ github.workspace }}\mudlet-4.15.1-lite-portable.zip
+          if-no-files-found: error
