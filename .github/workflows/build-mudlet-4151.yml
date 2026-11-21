@@ -128,9 +128,22 @@ jobs:
           cd "$REL"
 
           # Qt runtime + plugins (MSYS2 Qt5 windeployqt).
-          windeployqt-qt5 mudlet.exe || true
+          windeployqt-qt5 mudlet.exe
 
-          # Non-Qt DLLs from MSYS2 /ucrt64/bin.
+          # Copy every non-system DLL that mudlet.exe actually depends on,
+          # discovered with ntldd -R. Far more reliable than a manual list:
+          # Qt5/UCRT64 builds pull in ICU, OpenSSL, pcre2, libxml2, harfbuzz, etc.
+          ntldd -R mudlet.exe 2>/dev/null \
+            | grep -iE 'ucrt64[/\\]bin' \
+            | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
+            | sort -u \
+            | while IFS= read -r dll; do
+                msys_dll=$(cygpath -u "$dll" 2>/dev/null || printf '%s' "$dll")
+                if [ -f "$msys_dll" ]; then cp -f "$msys_dll" .; fi
+              done
+
+          # Explicit list for a few runtime DLLs ntldd may miss (delay-loaded
+          # or used by Lua modules).
           for dll in \
             lua51.dll libpcre-1.dll libzip-13.dll zlib1.dll libyajl.dll \
             libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
@@ -158,6 +171,14 @@ jobs:
           fi
           cp "$WS/Mudlet/README.md" . || true
           mv -f mudlet.exe Mudlet.exe
+
+          # Verify no dependency is still missing before packaging.
+          MISSING=$(ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true)
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: unresolved DLL dependencies:" >&2
+            echo "$MISSING" >&2
+            exit 1
+          fi
 
           (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .)
 
