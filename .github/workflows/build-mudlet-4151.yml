@@ -103,12 +103,12 @@ jobs:
           # WITH_OWN_QTKEYCHAIN left enabled on purpose.
           cd "$WS/Mudlet/src"
           qmake-qt5 CONFIG+=release mudlet.pro
-          # Use only 2 parallel jobs: Mudlet has huge source files (TLuaInterpreter.cpp
-          # ~650KB) and 4 jobs exhausts the GitHub runner's 7GB RAM (cc1plus OOM).
+          # Single-threaded build: Mudlet's huge files compiled with -O3 exhaust
+          # the runner's 7GB RAM even at -j2 (cc1plus is killed silently).
           if command -v mingw32-make >/dev/null 2>&1; then
-            mingw32-make -j2
+            mingw32-make -j1
           else
-            make -j2
+            make -j1
           fi
 
       - name: Deploy Qt runtime and non-Qt dependencies
