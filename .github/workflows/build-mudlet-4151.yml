@@ -9,7 +9,6 @@ on:
 
 env:
   MUDLET_TAG: Mudlet-4.15.1
-  QT_VERSION: 5.15.2
 
 jobs:
   build:
@@ -30,121 +29,115 @@ jobs:
           path: Mudlet
           fetch-depth: 1
 
-      - name: Install Qt 5.15.2 + MinGW 8.1 (64-bit)
-        id: qt
-        uses: jurplel/install-qt-action@v3
+      - name: Install MSYS2 (UCRT64)
+        uses: msys2/setup-msys2@v2
         with:
-          version: ${{ env.QT_VERSION }}
-          host: windows
-          target: desktop
-          arch: win64_mingw81
-          tools: tools_mingw,qt.tools.win64_mingw810
-          dir: ${{ github.workspace }}\Qt
-          cache: false
-          add-tools-to-path: true
-          set-env: true
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-multimedia
+            mingw-w64-ucrt-x86_64-qt5-tools
+            mingw-w64-ucrt-x86_64-qt5-svg
+            mingw-w64-ucrt-x86_64-qt5-imageformats
+            mingw-w64-ucrt-x86_64-qt5-translations
+            mingw-w64-ucrt-x86_64-lua51
+            mingw-w64-ucrt-x86_64-pcre
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-libzip
+            mingw-w64-ucrt-x86_64-pugixml
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-yajl
+            mingw-w64-ucrt-x86_64-sqlite
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-lua51-luafilesystem
+            mingw-w64-ucrt-x86_64-lua51-lpeg
+            mingw-w64-ucrt-x86_64-lua51-lsqlite3
+            mingw-w64-ucrt-x86_64-luarocks
+            mingw-w64-ucrt-x86_64-ntldd
+
+      - name: Install extra Lua 5.1 modules (luarocks)
+        shell: msys2 {0}
+        run: |
+          set -e
+          export YAJL_DIR=/ucrt64
+          export PCRE_DIR=/ucrt64
+          export ZIP_DIR=/ucrt64
+          export SQLITE_DIR=/ucrt64
+          export LUA_INCDIR=/ucrt64/include/lua5.1
+          export LUA_LIBDIR=/ucrt64/lib
+          luarocks --lua-version=5.1 install lua-yajl  || true
+          luarocks --lua-version=5.1 install luautf8   || true
+          luarocks --lua-version=5.1 install lua-zip   || true
+          luarocks --lua-version=5.1 install lrexlib-pcre || true
+          luarocks --lua-version=5.1 install argparse  || true
+          luarocks --lua-version=5.1 install lunajson  || true
 
       - name: Install NSIS
+        shell: pwsh
         run: choco install nsis -y --no-progress
 
-      - name: Install native dependencies (Lua/Hunspell/PCRE/zip/zlib/pugixml/Boost/YAJL/SQLite/OpenSSL)
-        id: deps
+      - name: Apply feature-disable patch + Lua-leak fix
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $ws = "${{ github.workspace }}"
-          $depDir = "$ws\build-deps"
-          New-Item -ItemType Directory -Force -Path $depDir | Out-Null
-
-          # install-qt-action sets Qt5_DIR / QT_ROOT_DIR; derive base dirs from it.
-          $qtRoot = $env:Qt5_DIR
-          if (-not $qtRoot) { $qtRoot = $env:QT_ROOT_DIR }
-          if (-not $qtRoot) { throw "Qt5_DIR / QT_ROOT_DIR not set by install-qt-action" }
-          $qtBase = Split-Path -Parent $qtRoot
-          $mingwBase = Join-Path (Split-Path -Parent $qtBase) "Tools\mingw810_64"
-
-          # Export for later steps.
-          "QT_BASE_DIR=$qtBase" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "MINGW_BASE_DIR=$mingwBase" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "WORKING_BASE_DIR=$depDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          # Copy official helper scripts into place.
-          Copy-Item "$ws\Mudlet\CI\appveyor.functions.ps1" "$depDir\" -Force
-          Copy-Item "$ws\Mudlet\CI\appveyor.install.ps1" "$depDir\" -Force
-
-          $env:QT_BASE_DIR = $qtBase
-          $env:MINGW_BASE_DIR = $mingwBase
-          $env:WORKING_BASE_DIR = $depDir
-
-          Set-Location $depDir
-          .\appveyor.install.ps1
-
-      - name: Apply feature-disable patch
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          Set-Location "${{ github.workspace }}"
-          python build-config\patches\apply_lite_patch.py "${{ github.workspace }}\Mudlet"
+          python "${{ github.workspace }}\build-config\patches\apply_lite_patch.py" "${{ github.workspace }}\Mudlet"
           if ($LASTEXITCODE -ne 0) { throw "apply_lite_patch.py failed" }
 
-      - name: Build Mudlet (qmake + MinGW)
-        shell: pwsh
+      - name: Build Mudlet (qmake + mingw32-make under UCRT64)
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          $env:WITH_UPDATER = "NO"
-          $env:WITH_3DMAPPER = "NO"
-          # WITH_FONTS and WITH_VARIABLE_SPLASH_SCREEN are intentionally NOT set
-          # to NO: built-in fonts and the variable splash screen are kept.
-          # WITH_OWN_QTKEYCHAIN must stay enabled (do NOT set to NO).
-
-          Set-Location "${{ github.workspace }}\Mudlet\src"
+          set -e
+          WS=$(cygpath -u "$GITHUB_WORKSPACE")
+          export MINGW_BASE_DIR=/ucrt64
+          # Use the MSYS2 branch in mudlet.pro (lua5.1 / include/lua5.1).
+          export WITH_MAIN_BUILD_SYSTEM=NO
+          # Feature toggles: keep built-in fonts and variable splash screen.
+          export WITH_UPDATER=NO
+          export WITH_3DMAPPER=NO
+          # WITH_OWN_QTKEYCHAIN left enabled on purpose.
+          cd "$WS/Mudlet/src"
           qmake CONFIG+=release mudlet.pro
-          if ($LASTEXITCODE -ne 0) { throw "qmake failed" }
-          mingw32-make -j ${{ env.NUMBER_OF_PROCESSORS }}
-          if ($LASTEXITCODE -ne 0) { throw "mingw32-make failed" }
+          mingw32-make -j${{ env.NUMBER_OF_PROCESSORS }}
 
       - name: Deploy Qt runtime and non-Qt dependencies
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          $ws = "${{ github.workspace }}"
-          $releaseDir = "$ws\Mudlet\src\release"
-          Set-Location $releaseDir
+          set -e
+          WS=$(cygpath -u "$GITHUB_WORKSPACE")
+          REL="$WS/Mudlet/src/release"
+          cd "$REL"
 
-          # Qt libraries and plugins.
-          windeployqt.exe mudlet.exe
+          # Qt runtime + plugins (MSYS2 Qt5 windeployqt).
+          windeployqt mudlet.exe || true
 
-          # Non-Qt runtime DLLs (LITE: no Hunspell, no discord-rpc).
-          # appveyor.install.ps1 drops prebuilt deps under WORKING_BASE_DIR; MinGW
-          # runtime DLLs live in MINGW_BASE_DIR\bin. Search both recursively.
-          $searchRoots = @("$env:MINGW_BASE_DIR\bin", "$env:WORKING_BASE_DIR")
-          $wanted = @(
-            "lua51.dll", "lua5.1.dll", "libpcre-1.dll", "libzip.dll", "zlib1.dll",
-            "libyaml.dll", "libcrypto-1_1.dll", "libssl-1_1.dll", "libgcc_s_seh-1.dll",
-            "libstdc++-6.dll", "libwinpthread-1.dll", "libeay32.dll", "ssleay32.dll"
-          )
-          foreach ($dll in $wanted) {
-            $found = $null
-            foreach ($root in $searchRoots) {
-              if (Test-Path $root) {
-                $hit = Get-ChildItem -Path $root -Filter $dll -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($hit) { $found = $hit.FullName; break }
-              }
-            }
-            if ($found) { Copy-Item $found . -Force }
-            else { Write-Warning "Missing non-Qt DLL: $dll (searched $($searchRoots -join ', '))" }
-          }
+          # Non-Qt DLLs from MSYS2 /ucrt64/bin.
+          for dll in \
+            lua51.dll libpcre-1.dll libzip-13.dll zlib1.dll libyajl.dll \
+            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
+          done
+
+          # Lua modules (MSYS2 pacman tree + luarocks tree).
+          for luadir in /ucrt64/lib/lua/5.1 /ucrt64/lib/luarocks/rocks-5.1; do
+            if [ -d "$luadir" ]; then cp -r "$luadir" .; fi
+          done
 
           # Mudlet runtime data.
-          Copy-Item "$ws\Mudlet\mudlet-lua" . -Recurse -Force
-          Copy-Item "$ws\Mudlet\translations\lua" "translations\lua" -Recurse -Force
-          Copy-Item "$env:MINGW_BASE_DIR\lib\lua\5.1" . -Recurse -Force
-          Copy-Item "$ws\Mudlet\3rdparty\lcf" . -Recurse -Force
-          if (Test-Path "$ws\Mudlet\LICENSE") { Copy-Item "$ws\Mudlet\LICENSE" . -Force }
-          else { "Mudlet 4.15.1 Lite - GPLv3 custom build. See https://www.gnu.org/licenses/gpl-3.0.html" | Out-File -FilePath "$releaseDir\LICENSE" -Encoding utf8 }
-          Copy-Item "$ws\Mudlet\README.md" . -Force
-          Rename-Item -Path "$releaseDir\mudlet.exe" -NewName "Mudlet.exe" -Force
-          Compress-Archive -Path "$releaseDir\*" -DestinationPath "$ws\mudlet-4.15.1-lite-portable.zip" -Force
+          cp -r "$WS/Mudlet/mudlet-lua" .
+          mkdir -p translations
+          cp -r "$WS/Mudlet/translations/lua" translations/ || true
+          cp -r "$WS/Mudlet/3rdparty/lcf" . || true
+          if [ -f "$WS/Mudlet/LICENSE" ]; then cp "$WS/Mudlet/LICENSE" .; fi
+          cp "$WS/Mudlet/README.md" . || true
+          mv -f mudlet.exe Mudlet.exe
+
+          (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .)
 
       - name: Build NSIS installer
         shell: pwsh
@@ -155,7 +148,6 @@ jobs:
           $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
           if (-not (Test-Path $makensis)) { $makensis = "C:\Program Files\NSIS\makensis.exe" }
 
-          # Locate Mudlet's icon so the installer has a proper icon (optional).
           $icon = Get-ChildItem -Path "$ws\Mudlet" -Filter "mudlet.ico" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           $iconArg = @()
           if ($icon) { $iconArg = @("/DMUI_ICON_OVERRIDE=$($icon.FullName)") }

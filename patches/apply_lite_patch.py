@@ -63,6 +63,14 @@ sub(PRO, r"qtHaveModule\s*\(\s*texttospeech\s*\)\s*\{[^}]*\}",
     "# LITE: TextToSpeech module disabled", re.S, required=False,
     label="texttospeech module block")
 
+# --- MSYS2/UCRT64 library name adaptation ----------------------------------
+# Mudlet 4.15.1's qmake expects the appveyor MinGW layout. Under MSYS2 UCRT64:
+#   * PCRE import lib is libpcre.dll.a -> link flag must be -lpcre (not -lpcre-1)
+#   * lua51 import lib is liblua5.1.dll.a, header in include/lua5.1 (the
+#     MSYS2 branch of mudlet.pro already uses -llua5.1 / include/lua5.1, which
+#     is selected by WITH_MAIN_BUILD_SYSTEM=NO in the workflow).
+sub(PRO, r"-lpcre-1", "-lpcre", label="pcre link name -> -lpcre")
+
 STUBS = os.path.abspath(os.path.join(os.path.dirname(__file__), "stubs")).replace("\\", "/")
 append = [
     "",
@@ -72,7 +80,7 @@ append = [
     "",
     "# Drop Hunspell from the link line and redirect its headers to no-op stubs:",
     "PKGCONFIG -= hunspell",
-    "LIBS -= -lhunspell-1.6 -lhunspell-1.7 -lhunspell",
+    "LIBS -= -lhunspell-1.6 -lhunspell-1.7 -llibhunspell-1.7 -lhunspell",
     "INCLUDEPATH = " + STUBS + " $$INCLUDEPATH",
     "# =======================================================================",
     "",

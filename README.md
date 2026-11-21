@@ -91,22 +91,28 @@ git push -u origin main
 
 ## 编译环境（工作流已配置，无需手动干预）
 
+旧方案依赖 Mudlet 官方 `appveyor.install.ps1`，它从十几个 2015 年前后的老下载站
+（osdn.net、sourceforge、overbyte.eu 等）拉取并源码编译依赖，目前这些源大量失效。
+因此本方案改为**全程 MSYS2**，所有依赖从 MSYS2 的软件仓库安装，稳定可靠：
+
 - Runner：`windows-2022`
-- Qt：`5.15.2` + MinGW `8.1.0` 64-bit（`jurplel/install-qt-action@v3`）
-- 依赖：复用 Mudlet 官方 `CI/appveyor.install.ps1`（Lua 5.1 / PCRE / zlib / libzip /
-  pugixml / Boost / YAJL / SQLite / OpenSSL / LuaRocks 及 Lua 模块）
-- 构建：`qmake CONFIG+=release mudlet.pro` + `mingw32-make -j<N>`
-- 部署：`windeployqt` + 手工复制非 Qt 运行库
+- 环境：MSYS2 **UCRT64**（必须用这个环境，因为只有 UCRT64/CLANG64 还提供 Lua 5.1）
+- Qt：`5.15.x`（MSYS2 包 `mingw-w64-ucrt-x86_64-qt5-*`，满足 4.15.1 要求的 Qt ≥ 5.11）
+- 依赖：`pacman` 安装 lua51 / pcre / zlib / libzip / pugixml / boost / yajl / sqlite /
+  openssl / luarocks 及常用 Lua 5.1 模块
+- 构建：`WITH_MAIN_BUILD_SYSTEM=NO`（选用 mudlet.pro 的 MSYS2 分支）+ `WITH_UPDATER=NO`
+  + `WITH_3DMAPPER=NO`，然后 `qmake` + `mingw32-make`
+- 部署：MSYS2 的 `windeployqt` + 从 `/ucrt64/bin` 复制非 Qt DLL
 - 打包：NSIS（`choco install nsis`）
 
 ## 已知注意事项
 
-1. **官方依赖下载链接较老**：`appveyor.install.ps1` 里部分 URL 是 2022 年左右的，
-   若某天失效导致 `CheckAndInstall*` 失败，需要手动更新对应脚本中的下载 URL。
-   失败时可下载日志 artifact（`verbose_output.log`）查看是哪一步失败。
+1. **首次运行可能需微调**：MSYS2 的包版本会更新，若某次编译因库名/头文件路径变化失败，
+   请按 Actions 日志里的报错调整 workflow 的包名或 `apply_lite_patch.py` 的库名适配。
+   常见的两个已处理的适配点：PCRE 链接名 `-lpcre-1` → `-lpcre`；Hunspell 用桩头文件。
 2. **裁剪脚本对 tag 敏感**：`apply_lite_patch.py` 用正则匹配 `Mudlet-4.15.1` 的源码。
    若更换 tag，脚本会打印 `[WARN] ... no match` 提示哪些替换未命中，请据此调整脚本。
-   `required=True` 的项未命中会直接报错，避免带病构建（当前脚本无强制项）。
+   Lua 泄漏修复是强制项，定位不到会直接报错中止构建。
 3. **Hunspell 桩的兼容性**：桩头文件 `patches/stubs/hunspell/` 实现了 Mudlet 4.15.1
    用到的 C/C++ Hunspell API。如果编译时报某个 `Hunspell_*` 或 `Hunspell::` 方法未定义，
    说明还有遗漏的 API，按报错把对应 no-op 函数补进 `hunspell.h` / `hunspell.hxx` 即可。
@@ -118,13 +124,14 @@ git push -u origin main
 
 如果你想在本地 Windows 上复现，不依赖 GitHub Actions，可以按下面顺序手工执行：
 
-1. 安装 Qt 5.15.2 + MinGW 8.1 64-bit，并加入 `PATH`；
-2. Clone Mudlet 并切到 tag：`git clone -b Mudlet-4.15.1 https://github.com/Mudlet/Mudlet.git`；
-3. 运行 `setup-windows-sdk.ps1` 安装依赖；
+1. 安装 MSYS2，打开 **UCRT64** 终端；
+2. 按 workflow 里的 `pacman -S` 清单安装依赖；
+3. Clone Mudlet 并切到 tag：`git clone -b Mudlet-4.15.1 https://github.com/Mudlet/Mudlet.git`；
 4. 运行 `python patches/apply_lite_patch.py <Mudlet目录>`；
-5. `cd Mudlet/src`，设置 `WITH_UPDATER=NO`、`WITH_3DMAPPER=NO`
+5. `cd Mudlet/src`，设置 `MINGW_BASE_DIR=/ucrt64`、`WITH_MAIN_BUILD_SYSTEM=NO`、
+   `WITH_UPDATER=NO`、`WITH_3DMAPPER=NO`
    （不要设置 `WITH_FONTS` 和 `WITH_VARIABLE_SPLASH_SCREEN`，保留内置字体与启动画面），再执行：
-   ```bat
+   ```bash
    qmake CONFIG+=release mudlet.pro
    mingw32-make -j8
    ```
