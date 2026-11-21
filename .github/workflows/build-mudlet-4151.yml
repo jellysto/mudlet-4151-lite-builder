@@ -142,8 +142,9 @@ jobs:
             if [ -d "$luadir" ]; then cp -r "$luadir" .; fi
           done
 
-          # Mudlet runtime data.
-          cp -r "$WS/Mudlet/mudlet-lua" .
+          # Mudlet runtime data. Note: in 4.15.1 the Lua scripts live at
+          # src/mudlet-lua (not the repository root).
+          cp -r "$WS/Mudlet/src/mudlet-lua" .
           mkdir -p translations
           cp -r "$WS/Mudlet/translations/lua" translations/ || true
           cp -r "$WS/Mudlet/3rdparty/lcf" . || true
