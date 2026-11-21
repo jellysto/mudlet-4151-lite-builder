@@ -36,10 +36,10 @@ jobs:
           update: true
           install: >-
             git
-            make
             zip
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-make
             mingw-w64-ucrt-x86_64-qt5-base
             mingw-w64-ucrt-x86_64-qt5-multimedia
             mingw-w64-ucrt-x86_64-qt5-tools
@@ -102,8 +102,12 @@ jobs:
           export WITH_3DMAPPER=NO
           # WITH_OWN_QTKEYCHAIN left enabled on purpose.
           cd "$WS/Mudlet/src"
-          qmake CONFIG+=release mudlet.pro
-          mingw32-make -j${{ env.NUMBER_OF_PROCESSORS }}
+          qmake-qt5 CONFIG+=release mudlet.pro
+          if command -v mingw32-make >/dev/null 2>&1; then
+            mingw32-make -j${{ env.NUMBER_OF_PROCESSORS }}
+          else
+            make -j${{ env.NUMBER_OF_PROCESSORS }}
+          fi
 
       - name: Deploy Qt runtime and non-Qt dependencies
         shell: msys2 {0}
@@ -114,7 +118,7 @@ jobs:
           cd "$REL"
 
           # Qt runtime + plugins (MSYS2 Qt5 windeployqt).
-          windeployqt mudlet.exe || true
+          windeployqt-qt5 mudlet.exe || true
 
           # Non-Qt DLLs from MSYS2 /ucrt64/bin.
           for dll in \
