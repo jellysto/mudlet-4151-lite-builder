@@ -126,9 +126,11 @@ for slot in ["slot_irc", "slot_discord", "slot_mudlet_discord"]:
 # pGlobalLua = nullptr before the first initLuaGlobals() call, so the guard is
 # safe on first use.
 LUA = "src/TLuaInterpreter.cpp"
+# 4.15.1 uses pGlobalLua = newstate(); (Mudlet's own wrapper). Newer versions
+# use luaL_newstate(). Match either form.
 fix_pat = (
     r"(void TLuaInterpreter::initLuaGlobals\(\)\s*\{\s*\n)"
-    r"(\s*)(pGlobalLua\s*=\s*luaL_newstate\(\)\s*;)"
+    r"(\s*)(pGlobalLua\s*=\s*(?:newstate|luaL_newstate)\(\)\s*;)"
 )
 fix_repl = (
     r"\1"
@@ -142,7 +144,7 @@ n = sub(LUA, fix_pat, fix_repl, required=True,
         label="close old lua_State in initLuaGlobals (leak fix)")
 if n == 0:
     raise RuntimeError(
-        "FATAL: could not locate 'pGlobalLua = luaL_newstate();' in "
+        "FATAL: could not locate 'pGlobalLua = newstate()/luaL_newstate();' in "
         "TLuaInterpreter::initLuaGlobals(). Refusing to build with the leak unfixed.")
 
 print("\n".join(log))
