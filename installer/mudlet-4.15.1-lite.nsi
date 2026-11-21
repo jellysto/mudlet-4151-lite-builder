@@ -16,7 +16,11 @@ Unicode true
 
 ; --- Installer metadata ----------------------------------------------------
 Name "Mudlet ${MUDLET_VERSION} Lite"
-OutFile "Mudlet-${MUDLET_VERSION}-Lite-Setup.exe"
+!ifdef SETUP_OUTPUT
+  OutFile "${SETUP_OUTPUT}"
+!else
+  OutFile "Mudlet-${MUDLET_VERSION}-Lite-Setup.exe"
+!endif
 InstallDir "$PROGRAMFILES64\Mudlet Lite"
 InstallDirRegKey HKLM "Software\Mudlet Lite" "Install_Dir"
 RequestExecutionLevel admin

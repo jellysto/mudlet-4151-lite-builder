@@ -174,9 +174,11 @@ jobs:
           $iconArg = @()
           if ($icon) { $iconArg = @("/DMUI_ICON_OVERRIDE=$($icon.FullName)") }
 
+          $setup = "$ws\Mudlet-4.15.1-Lite-Setup.exe"
           Set-Location $ws
-          & $makensis /DMUDLET_VERSION=4.15.1 /DRELEASE_DIR="$ws\Mudlet\src\release" @iconArg $nsi
+          & $makensis /DMUDLET_VERSION=4.15.1 /DRELEASE_DIR="$ws\Mudlet\src\release" "/DSETUP_OUTPUT=$setup" @iconArg $nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
+          if (-not (Test-Path $setup)) { throw "NSIS did not produce expected installer: $setup" }
 
       - name: Upload installer and portable zip
         uses: actions/upload-artifact@v4
