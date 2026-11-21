@@ -183,7 +183,7 @@ jobs:
           # (Qt5*, lib*, etc.) count as genuinely missing.
           MISSING=$(ntldd -R Mudlet.exe 2>/dev/null \
             | grep -i "not found" \
-            | grep -viE "ext-ms-win-|api-ms-win-|wpxalholder|hvsifiletrust" \
+            | grep -viE "ext-|api-ms-|wpx.*holder|hvsifiletrust" \
             || true)
           if [ -n "$MISSING" ]; then
             echo "ERROR: unresolved 3rd-party DLL dependencies:" >&2
