@@ -176,10 +176,17 @@ jobs:
           cp "$WS/Mudlet/README.md" . || true
           mv -f mudlet.exe Mudlet.exe
 
-          # Verify no dependency is still missing before packaging.
-          MISSING=$(ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true)
+          # Verify no third-party dependency is still missing before packaging.
+          # ntldd reports Windows API-Sets (ext-ms-win-*/api-ms-win-*) and a few
+          # system DLLs as "not found" -- these are provided by Windows at runtime
+          # and must NOT be packaged. Filter them out; only real 3rd-party DLLs
+          # (Qt5*, lib*, etc.) count as genuinely missing.
+          MISSING=$(ntldd -R Mudlet.exe 2>/dev/null \
+            | grep -i "not found" \
+            | grep -viE "ext-ms-win-|api-ms-win-|wpxalholder|hvsifiletrust" \
+            || true)
           if [ -n "$MISSING" ]; then
-            echo "ERROR: unresolved DLL dependencies:" >&2
+            echo "ERROR: unresolved 3rd-party DLL dependencies:" >&2
             echo "$MISSING" >&2
             exit 1
           fi
