@@ -98,10 +98,6 @@ append = [
     "QMAKE_CFLAGS_RELEASE -= -O3",
     "QMAKE_CFLAGS_RELEASE -= -O2",
     "QMAKE_CFLAGS_RELEASE += -O1",
-    "",
-    "# MSYS2 names the Qt5 translation tools with a -qt5 suffix; patch lrelease",
-    "# calls in the generated build rules:",
-    "QMAKE_LRELEASE = lrelease-qt5",
     "# =======================================================================",
     "",
 ]

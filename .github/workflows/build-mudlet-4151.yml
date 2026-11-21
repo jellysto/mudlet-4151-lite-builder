@@ -101,6 +101,14 @@ jobs:
           export WITH_UPDATER=NO
           export WITH_3DMAPPER=NO
           # WITH_OWN_QTKEYCHAIN left enabled on purpose.
+          # MSYS2 names Qt5 tools with a -qt5 suffix, but the generated Makefile
+          # hardcodes bare names (lrelease.exe/lupdate.exe). Provide aliases so
+          # translation .qm files get built (otherwise qrc_qm.cpp fails).
+          for tool in lrelease lupdate; do
+            if [ -f "/ucrt64/bin/${tool}-qt5.exe" ] && [ ! -f "/ucrt64/bin/${tool}.exe" ]; then
+              cp -f "/ucrt64/bin/${tool}-qt5.exe" "/ucrt64/bin/${tool}.exe"
+            fi
+          done
           cd "$WS/Mudlet/src"
           qmake-qt5 CONFIG+=release mudlet.pro
           # Single-threaded build: Mudlet's huge files compiled with -O3 exhaust
