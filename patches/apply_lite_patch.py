@@ -82,6 +82,12 @@ append = [
     "PKGCONFIG -= hunspell",
     "LIBS -= -lhunspell-1.6 -lhunspell-1.7 -llibhunspell-1.7 -lhunspell",
     "INCLUDEPATH = " + STUBS + " $$INCLUDEPATH",
+    "",
+    "# MSYS2's GCC defaults to C23, which rejects old-style function pointer",
+    "# declarations in bundled Oniguruma (st.c/regparse.c). Force gnu11, which",
+    "# is what Mudlet 4.15.1 was originally built against:",
+    "QMAKE_CFLAGS += -std=gnu11",
+    "QMAKE_CXXFLAGS += -std=gnu++17",
     "# =======================================================================",
     "",
 ]
