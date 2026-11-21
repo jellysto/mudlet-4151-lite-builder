@@ -148,7 +148,14 @@ jobs:
           mkdir -p translations
           cp -r "$WS/Mudlet/translations/lua" translations/ || true
           cp -r "$WS/Mudlet/3rdparty/lcf" . || true
-          if [ -f "$WS/Mudlet/LICENSE" ]; then cp "$WS/Mudlet/LICENSE" .; fi
+          # NSIS MUI_PAGE_LICENSE needs a LICENSE file in the release dir.
+          if [ -f "$WS/Mudlet/LICENSE" ]; then
+            cp "$WS/Mudlet/LICENSE" .
+          elif [ -f "$WS/Mudlet/COPYING" ]; then
+            cp "$WS/Mudlet/COPYING" LICENSE
+          else
+            printf 'Mudlet 4.15.1 Lite - GPLv3 custom build.\nSee https://www.gnu.org/licenses/gpl-3.0.html\n' > LICENSE
+          fi
           cp "$WS/Mudlet/README.md" . || true
           mv -f mudlet.exe Mudlet.exe
 
