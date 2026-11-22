@@ -211,9 +211,24 @@ jobs:
           # launching the portable build on a Windows machine.
           ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true
 
-          # Qt plugins (platforms/qwindows.dll, imageformats/, etc.).
-          # Run before zip so the plugins are included in the portable package.
-          windeployqt-qt5 mudlet.exe || true
+          # Qt plugins: copy the whole plugin tree explicitly (do NOT rely on
+          # windeployqt -- it can fail after exe rename). platforms/qwindows.dll
+          # is required or Qt reports "no platform plugin could be initialized".
+          if [ -d /ucrt64/share/qt5/plugins ]; then
+            cp -r /ucrt64/share/qt5/plugins/. .
+            # qwindows.dll and friends depend on more DLLs; scan them all.
+            find . -type f -path './*/*.dll' | while IFS= read -r pdl; do
+              ntldd "$pdl" 2>/dev/null \
+                | grep -iE 'ucrt64[/\\]bin' \
+                | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
+                | sort -u \
+                | while IFS= read -r depdll; do
+                    msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
+                    if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
+                  done
+            done
+          fi
+          windeployqt-qt5 Mudlet.exe || true
 
           (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .) || true
 
