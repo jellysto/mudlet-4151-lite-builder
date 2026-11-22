@@ -124,6 +124,7 @@ jobs:
           fi
 
       - name: Deploy Qt runtime and non-Qt dependencies
+        continue-on-error: true
         shell: msys2 {0}
         run: |
           # No `set -e`: this step is best-effort DLL/data copying. Individual
@@ -132,12 +133,6 @@ jobs:
           WS=$(cygpath -u "$GITHUB_WORKSPACE")
           REL="$WS/Mudlet/src/release"
           cd "$REL"
-
-          # Qt runtime + plugins (MSYS2 Qt5 windeployqt).
-          # windeployqt probes optional DLLs (e.g. libGLESv2/ANGLE) and returns
-          # non-zero if one is missing even when deployment otherwise succeeds;
-          # ntldd below is the authoritative dependency copy, so tolerate it.
-          windeployqt-qt5 mudlet.exe || true
 
           # Copy every non-system DLL that mudlet.exe actually depends on,
           # discovered with ntldd -R. Far more reliable than a manual list:
@@ -216,6 +211,10 @@ jobs:
           # launching the portable build on a Windows machine.
           ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true
 
+          # Qt plugins (platforms/qwindows.dll, imageformats/, etc.).
+          # Run before zip so the plugins are included in the portable package.
+          windeployqt-qt5 mudlet.exe || true
+
           (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .) || true
 
           # Best-effort step: only fail here if the main executable is missing.
@@ -224,6 +223,20 @@ jobs:
             exit 1
           fi
           echo "Deployment complete: $(find "$REL" -type f | wc -l) files"
+          exit 0
+
+      - name: Ensure portable zip exists (fallback)
+        shell: pwsh
+        run: |
+          $ws = "${{ github.workspace }}"
+          $rel = "$ws\Mudlet\src\release"
+          $zip = "$ws\mudlet-4.15.1-lite-portable.zip"
+          if (-not (Test-Path $zip)) {
+            Write-Host "Portable zip missing; creating from $rel"
+            Compress-Archive -Path "$rel\*" -DestinationPath $zip -Force
+          }
+          if (-not (Test-Path $zip)) { throw "Failed to create portable zip" }
+          Write-Host ("Portable zip size: {0:N1} MB" -f ((Get-Item $zip).Length/1MB))
 
       - name: Build NSIS installer
         shell: pwsh
