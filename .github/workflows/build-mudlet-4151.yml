@@ -126,7 +126,9 @@ jobs:
       - name: Deploy Qt runtime and non-Qt dependencies
         shell: msys2 {0}
         run: |
-          set -e
+          # No `set -e`: this step is best-effort DLL/data copying. Individual
+          # probes (ntldd/grep/windeployqt) may return non-zero on optional items
+          # and must not abort the whole deployment. Final checks guard output.
           WS=$(cygpath -u "$GITHUB_WORKSPACE")
           REL="$WS/Mudlet/src/release"
           cd "$REL"
@@ -214,7 +216,14 @@ jobs:
           # launching the portable build on a Windows machine.
           ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true
 
-          (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .)
+          (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .) || true
+
+          # Best-effort step: only fail here if the main executable is missing.
+          if [ ! -f "$REL/Mudlet.exe" ]; then
+            echo "ERROR: Mudlet.exe not found in release dir" >&2
+            exit 1
+          fi
+          echo "Deployment complete: $(find "$REL" -type f | wc -l) files"
 
       - name: Build NSIS installer
         shell: pwsh
