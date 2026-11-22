@@ -197,21 +197,26 @@ jobs:
             if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
           done
 
-          # ---- Precise, recursive DLL dependency collection ----
-          # Now that ALL entry points are in place (exe + Qt plugins + Lua
-          # module DLLs), use ntldd -R on each to collect the exact set of
-          # UCRT64 DLLs needed. This avoids both the 86MB "copy everything"
-          # approach AND the missing-DLL crashes from partial manual lists.
-          {
-            find . -maxdepth 1 -type f -name '*.dll' -print
-            find . -maxdepth 1 -type f -name '*.exe' -print
-            find . -type f -name '*.dll' -path './*/*' -print
-          } | sort -u | while IFS= read -r entry; do
-            ntldd -R "$entry" 2>/dev/null \
-              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p'
-          done | sed 's#.*[\\/]##' | sort -u | while IFS= read -r dllname; do
-            # dllname is now a bare filename like libpcre-1.dll
-            if [ -f "/ucrt64/bin/$dllname" ]; then cp -f "/ucrt64/bin/$dllname" .; fi
+          # ---- Automatic, recursive DLL dependency resolution ----
+          # objdump -p reads each PE file's import table directly (format:
+          # "DLL Name: xxx.dll"). Iterate until no new DLLs appear, so
+          # transitive deps (A->B->C) are all captured. Only DLLs present in
+          # /ucrt64/bin are copied; Windows system DLLs are left alone.
+          # This is self-maintaining: if a dependency changes in a future
+          # package update, it is discovered automatically -- no manual list.
+          for pass in 1 2 3 4 5; do
+            before=$(find . -maxdepth 1 -type f -name '*.dll' | wc -l)
+            find . -type f \( -name '*.exe' -o -name '*.dll' \) -print0 \
+              | while IFS= read -r -d '' pe; do
+                  objdump -p "$pe" 2>/dev/null \
+                    | sed -n 's/^[[:space:]]*DLL Name:[[:space:]]*\([^[:space:]]*\.dll\).*/\1/Ip'
+                done | sort -u | while IFS= read -r dep; do
+                  if [ -f "/ucrt64/bin/$dep" ] && [ ! -f "./$dep" ]; then
+                    cp -f "/ucrt64/bin/$dep" .
+                  fi
+                done
+            after=$(find . -maxdepth 1 -type f -name '*.dll' | wc -l)
+            if [ "$before" = "$after" ]; then break; fi
           done
 
           # Best-effort step: only fail here if the main executable is missing.
