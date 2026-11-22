@@ -134,23 +134,19 @@ jobs:
           REL="$WS/Mudlet/src/release"
           cd "$REL"
 
-          # Copy every non-system DLL that mudlet.exe actually depends on,
-          # discovered with ntldd -R. Far more reliable than a manual list:
-          # Qt5/UCRT64 builds pull in ICU, OpenSSL, pcre2, libxml2, harfbuzz, etc.
-          ntldd -R mudlet.exe 2>/dev/null \
-            | grep -iE 'ucrt64[/\\]bin' \
-            | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
-            | sort -u \
-            | while IFS= read -r dll; do
-                msys_dll=$(cygpath -u "$dll" 2>/dev/null || printf '%s' "$dll")
-                if [ -f "$msys_dll" ]; then cp -f "$msys_dll" .; fi
-              done
+          # Copy ALL DLLs from /ucrt64/bin. ntldd -R kept missing transitive
+          # deps (e.g. libfreetype-6.dll required by platforms/qwindows.dll),
+          # causing "no Qt platform plugin could be initialized". Bringing the
+          # whole runtime is bulletproof; the extra size is acceptable.
+          cp -f /ucrt64/bin/*.dll . 2>/dev/null || true
 
-          # Explicit list for a few runtime DLLs ntldd may miss (delay-loaded
-          # or used by Lua modules). Include libsqlite3-0.dll needed by luasql.
-          for dll in \
+          # Ensure the specific libs the Qt platform plugin needs are present
+          # (belt-and-braces, in case the glob above is affected by shell limits).
+          for dll in libfreetype-6.dll libharfbuzz-0.dll libmd4c.dll \
+            libpng16-16.dll libdouble-conversion.dll libicuin78.dll libicuuc78.dll \
+            libpcre2-16-0.dll libzstd.dll libz-1.dll libsqlite3-0.dll \
             lua51.dll libpcre-1.dll libzip-13.dll zlib1.dll libyajl.dll \
-            libsqlite3-0.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
           done
 

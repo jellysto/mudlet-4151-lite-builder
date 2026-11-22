@@ -109,9 +109,10 @@ log.append(f"[OK]   appended LITE config to {PRO} (stub dir: {STUBS})")
 # 2. src/ui/main_window.ui -- remove IRC/Discord menu entries
 # ---------------------------------------------------------------------------
 UI = "src/ui/main_window.ui"
-for action in ["actionIRC", "actionDiscord", "actionMudletDiscord", "actionLiveHelpChat"]:
+for action in ["actionIRC", "actionDiscord", "actionMudletDiscord", "actionLiveHelpChat",
+               "dactionIRC", "dactionDiscord", "dactionMudletDiscord", "dactionLiveHelpChat"]:
     # Removing only <addaction .../> keeps the <action> definition, so uic
-    # still generates ui->actionIRC and mudlet.cpp keeps compiling.
+    # still generates ui->dactionIRC and mudlet.cpp keeps compiling.
     sub(UI, rf"\s*<addaction\s+name=\"{action}\"\s*/>\s*\n", "\n",
         required=False, label=f"menu entry {action}")
 
@@ -131,6 +132,12 @@ for slot in ["slot_irc", "slot_discord", "slot_mudlet_discord"]:
         sub(CPP, rf"(void mudlet::{slot}\(\)\s*\{{)[^\n]*(\}})",
             r"\1 /* LITE: disabled */ \2", required=False,
             label=f"no-op {slot} (fallback)")
+
+# Hide the Discord toolbar button (QToolButton created in mudlet::mudlet()).
+# Keep all objects/actions alive to avoid null derefs; just don't show it.
+sub(CPP, r"(mpButtonDiscord->setAutoRaise\(true\);)",
+    r"\1\n    mpButtonDiscord->setVisible(false); // LITE: hide Discord toolbar button",
+    required=False, label="hide Discord toolbar button")
 
 # ---------------------------------------------------------------------------
 # 4. src/TLuaInterpreter.cpp -- fix resetProfile Lua state leak (upstream #9110)
