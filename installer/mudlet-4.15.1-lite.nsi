@@ -21,9 +21,10 @@ Name "Mudlet ${MUDLET_VERSION} Lite"
 !else
   OutFile "Mudlet-${MUDLET_VERSION}-Lite-Setup.exe"
 !endif
-InstallDir "$PROGRAMFILES64\Mudlet Lite"
-InstallDirRegKey HKLM "Software\Mudlet Lite" "Install_Dir"
-RequestExecutionLevel admin
+; Per-user install (like upstream Mudlet): no admin rights needed.
+InstallDir "$LOCALAPPDATA\Mudlet Lite"
+InstallDirRegKey HKCU "Software\Mudlet Lite" "Install_Dir"
+RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 ; --- Modern UI -------------------------------------------------------------
@@ -58,15 +59,15 @@ Section "Mudlet Lite (required)" SecMain
   ; Main binary + all runtime files (windeployqt already emitted Qt DLLs/plugins).
   File /r "${RELEASE_DIR}\*.*"
 
-  ; Write install registry + uninstaller.
-  WriteRegStr HKLM "Software\Mudlet Lite" "Install_Dir" "$INSTDIR"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "DisplayName" "Mudlet ${MUDLET_VERSION} Lite"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "DisplayVersion" "${MUDLET_VERSION}"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "Publisher" "Custom build"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "InstallLocation" "$INSTDIR"
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "NoModify" 1
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "NoRepair" 1
+  ; Write install registry + uninstaller (HKCU for per-user install).
+  WriteRegStr HKCU "Software\Mudlet Lite" "Install_Dir" "$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "DisplayName" "Mudlet ${MUDLET_VERSION} Lite"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "DisplayVersion" "${MUDLET_VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "Publisher" "Custom build"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "UninstallString" '"$INSTDIR\uninstall.exe"'
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "InstallLocation" "$INSTDIR"
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite" "NoRepair" 1
   WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd
 
@@ -97,6 +98,6 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Mudlet Lite\Uninstall.lnk"
   RMDir "$SMPROGRAMS\Mudlet Lite"
   Delete "$DESKTOP\Mudlet Lite.lnk"
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite"
-  DeleteRegKey HKLM "Software\Mudlet Lite"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Mudlet Lite"
+  DeleteRegKey HKCU "Software\Mudlet Lite"
 SectionEnd
