@@ -72,12 +72,15 @@ jobs:
           export SQLITE_DIR=/ucrt64
           export LUA_INCDIR=/ucrt64/include/lua5.1
           export LUA_LIBDIR=/ucrt64/lib
-          luarocks --lua-version=5.1 install lua-yajl  || true
-          luarocks --lua-version=5.1 install luautf8   || true
-          luarocks --lua-version=5.1 install lua-zip   || true
-          luarocks --lua-version=5.1 install lrexlib-pcre || true
-          luarocks --lua-version=5.1 install argparse  || true
-          luarocks --lua-version=5.1 install lunajson  || true
+          # Install into the system tree so modules land in /ucrt64/lib/lua/5.1
+          # alongside the pacman modules, making deployment a single copy.
+          luarocks --lua-version=5.1 --tree=/ucrt64 install lua-yajl  || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install luautf8   || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install lua-zip   || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install lrexlib-pcre || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install luasql-sqlite3 || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install argparse  || true
+          luarocks --lua-version=5.1 --tree=/ucrt64 install lunajson  || true
 
       - name: Install NSIS
         shell: pwsh
@@ -154,10 +157,26 @@ jobs:
             if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
           done
 
-          # Lua modules (MSYS2 pacman tree + luarocks tree).
-          for luadir in /ucrt64/lib/lua/5.1 /ucrt64/lib/luarocks/rocks-5.1; do
-            if [ -d "$luadir" ]; then cp -r "$luadir" .; fi
-          done
+          # Lua modules: Mudlet's default package.cpath searches ".\?.dll"
+          # (the exe's own directory) and "../lib/lua/5.1". Flatten all module
+          # DLLs into the release root so ".\?.dll" finds them, and also keep
+          # the standard lib/lua/5.1 + share/lua/5.1 subtrees.
+          if [ -d /ucrt64/lib/lua/5.1 ]; then
+            find /ucrt64/lib/lua/5.1 -type f -name '*.dll' -exec cp -f {} . \;
+            mkdir -p lib/lua/5.1
+            cp -r /ucrt64/lib/lua/5.1/. lib/lua/5.1/
+            # Dotted modules (e.g. luasql.sqlite3 -> luasql/sqlite3.dll): keep
+            # subdir tree directly under the exe directory too.
+            for sub in /ucrt64/lib/lua/5.1/*/; do
+              [ -d "$sub" ] && cp -r "$sub" .
+            done
+          fi
+          if [ -d /ucrt64/share/lua/5.1 ]; then
+            mkdir -p share/lua/5.1
+            cp -r /ucrt64/share/lua/5.1/. share/lua/5.1/
+          fi
+          # Lua pure-script modules (argparse, lunajson, re.lua, etc.) next to exe.
+          find /ucrt64/share/lua/5.1 -type f -name '*.lua' -exec cp -f {} . \; 2>/dev/null || true
 
           # Mudlet runtime data. Note: in 4.15.1 the Lua scripts live at
           # src/mudlet-lua (not the repository root).
