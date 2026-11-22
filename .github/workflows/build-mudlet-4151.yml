@@ -133,22 +133,6 @@ jobs:
           REL="$WS/Mudlet/src/release"
           cd "$REL"
 
-          # Copy ALL DLLs from /ucrt64/bin. ntldd -R kept missing transitive
-          # deps (e.g. libfreetype-6.dll required by platforms/qwindows.dll),
-          # causing "no Qt platform plugin could be initialized". Bringing the
-          # whole runtime is bulletproof; the extra size is acceptable.
-          cp -f /ucrt64/bin/*.dll . 2>/dev/null || true
-
-          # Ensure the specific libs the Qt platform plugin needs are present
-          # (belt-and-braces, in case the glob above is affected by shell limits).
-          for dll in libfreetype-6.dll libharfbuzz-0.dll libmd4c.dll \
-            libpng16-16.dll libdouble-conversion.dll libicuin78.dll libicuuc78.dll \
-            libpcre2-16-0.dll libzstd.dll libz-1.dll libsqlite3-0.dll \
-            lua51.dll libpcre-1.dll libzip-13.dll zlib1.dll libyajl.dll \
-            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
-          done
-
           # Lua modules: Mudlet's default package.cpath searches ".\?.dll"
           # (the exe's own directory) and "../lib/lua/5.1". Flatten all module
           # DLLs into the release root so ".\?.dll" finds them, and also keep
@@ -169,19 +153,6 @@ jobs:
           fi
           # Lua pure-script modules (argparse, lunajson, re.lua, etc.) next to exe.
           find /ucrt64/share/lua/5.1 -type f -name '*.lua' -exec cp -f {} . \; 2>/dev/null || true
-
-          # Copy transitive dependencies of ALL Lua module DLLs (ntldd -R on
-          # mudlet.exe does not see DLLs loaded at runtime via require()).
-          find . -maxdepth 2 -type f -name '*.dll' | while IFS= read -r modll; do
-            ntldd "$modll" 2>/dev/null \
-              | grep -iE 'ucrt64[/\\]bin' \
-              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
-              | sort -u \
-              | while IFS= read -r depdll; do
-                  msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
-                  if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
-                done
-          done
 
           # Mudlet runtime data. Note: in 4.15.1 the Lua scripts live at
           # src/mudlet-lua (not the repository root).
@@ -210,19 +181,35 @@ jobs:
           # is required or Qt reports "no platform plugin could be initialized".
           if [ -d /ucrt64/share/qt5/plugins ]; then
             cp -r /ucrt64/share/qt5/plugins/. .
-            # qwindows.dll and friends depend on more DLLs; scan them all.
-            find . -type f -path './*/*.dll' | while IFS= read -r pdl; do
-              ntldd "$pdl" 2>/dev/null \
-                | grep -iE 'ucrt64[/\\]bin' \
-                | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
-                | sort -u \
-                | while IFS= read -r depdll; do
-                    msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
-                    if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
-                  done
-            done
           fi
           windeployqt-qt5 Mudlet.exe || true
+
+          # A handful of DLLs the Qt platform plugin needs; ntldd sometimes
+          # misses these, so seed them explicitly (small, targeted list).
+          for dll in libfreetype-6.dll libharfbuzz-0.dll libmd4c.dll \
+            libpng16-16.dll libdouble-conversion.dll libicuin78.dll libicuuc78.dll \
+            libpcre2-16-0.dll libzstd.dll libz-1.dll libsqlite3-0.dll \
+            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
+          done
+
+          # ---- Precise, recursive DLL dependency collection ----
+          # Now that ALL entry points are in place (exe + Qt plugins + Lua
+          # module DLLs), use ntldd -R on each to collect the exact set of
+          # UCRT64 DLLs needed. This avoids both the 86MB "copy everything"
+          # approach AND the missing-DLL crashes from partial manual lists.
+          {
+            find . -maxdepth 1 -type f -name '*.dll' -print
+            find . -maxdepth 1 -type f -name '*.exe' -print
+            find . -type f -name '*.dll' -path './*/*' -print
+          } | sort -u | while IFS= read -r entry; do
+            ntldd -R "$entry" 2>/dev/null \
+              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
+              | grep -iE 'ucrt64[/\\]bin'
+          done | sort -u | while IFS= read -r depdll; do
+            msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
+            if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
+          done
 
           # Best-effort step: only fail here if the main executable is missing.
           if [ ! -f "$REL/Mudlet.exe" ]; then
