@@ -184,11 +184,15 @@ jobs:
           fi
           windeployqt-qt5 Mudlet.exe || true
 
-          # A handful of DLLs the Qt platform plugin needs; ntldd sometimes
-          # misses these, so seed them explicitly (small, targeted list).
-          for dll in libfreetype-6.dll libharfbuzz-0.dll libmd4c.dll \
+          # Mudlet's direct dependency DLLs + Qt platform plugin libs. ntldd
+          # output uses Windows-style paths that our filter can miss, so seed
+          # these explicitly. This is a small targeted set, not the whole bin/.
+          for dll in \
+            libpcre-1.dll libpugixml.dll libzip-13.dll zlib1.dll libyajl.dll \
+            lua51.dll libsqlite3-0.dll \
+            libfreetype-6.dll libharfbuzz-0.dll libmd4c.dll \
             libpng16-16.dll libdouble-conversion.dll libicuin78.dll libicuuc78.dll \
-            libpcre2-16-0.dll libzstd.dll libz-1.dll libsqlite3-0.dll \
+            libpcre2-16-0.dll libzstd.dll libz-1.dll \
             libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
           done
@@ -204,11 +208,10 @@ jobs:
             find . -type f -name '*.dll' -path './*/*' -print
           } | sort -u | while IFS= read -r entry; do
             ntldd -R "$entry" 2>/dev/null \
-              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
-              | grep -iE 'ucrt64[/\\]bin'
-          done | sort -u | while IFS= read -r depdll; do
-            msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
-            if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
+              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p'
+          done | sed 's#.*[\\/]##' | sort -u | while IFS= read -r dllname; do
+            # dllname is now a bare filename like libpcre-1.dll
+            if [ -f "/ucrt64/bin/$dllname" ]; then cp -f "/ucrt64/bin/$dllname" .; fi
           done
 
           # Best-effort step: only fail here if the main executable is missing.
