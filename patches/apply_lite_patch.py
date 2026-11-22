@@ -139,28 +139,6 @@ sub(CPP, r"(mpButtonDiscord->setAutoRaise\(true\);)",
     r"\1\n    mpButtonDiscord->setVisible(false); // LITE: hide Discord toolbar button",
     required=False, label="hide Discord toolbar button")
 
-# Restore the 4.11.3 whole-UI font. 4.15.1 dropped the global setFont(mainFont)
-# and the tab-bar setFont() calls, so menus, tabs, buttons and dialogs fell back
-# to the Windows system font. Re-add them for the 4.11.3 look.
-# mpTabBar is created earlier in the constructor (well before this point), so
-# it is safe to set its font here.
-ui_font_pat = (
-    r'    QFont mainFont = QFont\(qsl\("Bitstream Vera Sans Mono"\), 8, QFont::Normal\);\n'
-    r'    mpWidget_profileContainer->setFont\(mainFont\);\n'
-    r'    mpWidget_profileContainer->show\(\);'
-)
-ui_font_repl = (
-    '    QFont mainFont = QFont(qsl("Bitstream Vera Sans Mono"), 8, QFont::Normal);\n'
-    '    // LITE: restore the 4.11.3 UI font (removed upstream in 4.15.1)\n'
-    '    setFont(mainFont);\n'
-    '    mpWidget_profileContainer->setFont(mainFont);\n'
-    '    QFont mdiFont = QFont(qsl("Bitstream Vera Sans Mono"), 8, QFont::Normal);\n'
-    '    mpTabBar->setFont(mdiFont);\n'
-    '    mpWidget_profileContainer->show();'
-)
-sub(CPP, ui_font_pat, ui_font_repl, required=True,
-    label="restore 4.11.3 UI font (whole window + tab bar)")
-
 # ---------------------------------------------------------------------------
 # 4. src/TLuaInterpreter.cpp -- fix resetProfile Lua state leak (upstream #9110)
 # ---------------------------------------------------------------------------
