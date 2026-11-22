@@ -247,6 +247,15 @@ jobs:
           $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
           if (-not (Test-Path $makensis)) { $makensis = "C:\Program Files\NSIS\makensis.exe" }
 
+          # MUI_PAGE_LICENSE needs a real LICENSE file in the release dir.
+          # Create it here (authoritative) so NSIS never fails on a missing one.
+          $relDir = "$ws\Mudlet\src\release"
+          $license = "$relDir\LICENSE"
+          if (-not (Test-Path $license)) {
+            @("Mudlet 4.15.1 Lite - GPLv3 custom build.",
+              "See https://www.gnu.org/licenses/gpl-3.0.html") | Set-Content -Path $license -Encoding UTF8
+          }
+
           $icon = Get-ChildItem -Path "$ws\Mudlet" -Filter "mudlet.ico" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           $iconArg = @()
           if ($icon) { $iconArg = @("/DMUI_ICON_OVERRIDE=$($icon.FullName)") }
