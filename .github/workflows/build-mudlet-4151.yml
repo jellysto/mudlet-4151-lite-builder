@@ -36,7 +36,6 @@ jobs:
           update: true
           install: >-
             git
-            zip
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-binutils
             mingw-w64-ucrt-x86_64-make
@@ -201,10 +200,9 @@ jobs:
           cp "$WS/Mudlet/README.md" . || true
           mv -f mudlet.exe Mudlet.exe
 
-          # Report (do not fail on) any DLL ntldd could not resolve. Most are
-          # Windows system API-sets provided at runtime; real 3rd-party DLLs
-          # have already been copied above. The actual runtime check is simply
-          # launching the portable build on a Windows machine.
+          # Report-only: any DLL ntldd could not resolve. Most are Windows
+          # system API-sets provided at runtime; real 3rd-party DLLs were
+          # copied above. Not fatal by design.
           ntldd -R Mudlet.exe 2>/dev/null | grep -i "not found" || true
 
           # Qt plugins: copy the whole plugin tree explicitly (do NOT rely on
@@ -226,8 +224,6 @@ jobs:
           fi
           windeployqt-qt5 Mudlet.exe || true
 
-          (cd "$REL" && zip -r "$WS/mudlet-4.15.1-lite-portable.zip" .) || true
-
           # Best-effort step: only fail here if the main executable is missing.
           if [ ! -f "$REL/Mudlet.exe" ]; then
             echo "ERROR: Mudlet.exe not found in release dir" >&2
@@ -235,19 +231,6 @@ jobs:
           fi
           echo "Deployment complete: $(find "$REL" -type f | wc -l) files"
           exit 0
-
-      - name: Ensure portable zip exists (fallback)
-        shell: pwsh
-        run: |
-          $ws = "${{ github.workspace }}"
-          $rel = "$ws\Mudlet\src\release"
-          $zip = "$ws\mudlet-4.15.1-lite-portable.zip"
-          if (-not (Test-Path $zip)) {
-            Write-Host "Portable zip missing; creating from $rel"
-            Compress-Archive -Path "$rel\*" -DestinationPath $zip -Force
-          }
-          if (-not (Test-Path $zip)) { throw "Failed to create portable zip" }
-          Write-Host ("Portable zip size: {0:N1} MB" -f ((Get-Item $zip).Length/1MB))
 
       - name: Build NSIS installer
         shell: pwsh
@@ -277,11 +260,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
           if (-not (Test-Path $setup)) { throw "NSIS did not produce expected installer: $setup" }
 
-      - name: Upload installer and portable zip
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: Mudlet-4.15.1-Lite-Windows
-          path: |
-            ${{ github.workspace }}\Mudlet-4.15.1-Lite-Setup.exe
-            ${{ github.workspace }}\mudlet-4.15.1-lite-portable.zip
+          path: ${{ github.workspace }}\Mudlet-4.15.1-Lite-Setup.exe
           if-no-files-found: error
