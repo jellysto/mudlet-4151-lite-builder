@@ -150,10 +150,10 @@ jobs:
               done
 
           # Explicit list for a few runtime DLLs ntldd may miss (delay-loaded
-          # or used by Lua modules).
+          # or used by Lua modules). Include libsqlite3-0.dll needed by luasql.
           for dll in \
             lua51.dll libpcre-1.dll libzip-13.dll zlib1.dll libyajl.dll \
-            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            libsqlite3-0.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             if [ -f "/ucrt64/bin/$dll" ]; then cp -f "/ucrt64/bin/$dll" .; fi
           done
 
@@ -177,6 +177,19 @@ jobs:
           fi
           # Lua pure-script modules (argparse, lunajson, re.lua, etc.) next to exe.
           find /ucrt64/share/lua/5.1 -type f -name '*.lua' -exec cp -f {} . \; 2>/dev/null || true
+
+          # Copy transitive dependencies of ALL Lua module DLLs (ntldd -R on
+          # mudlet.exe does not see DLLs loaded at runtime via require()).
+          find . -maxdepth 2 -type f -name '*.dll' | while IFS= read -r modll; do
+            ntldd "$modll" 2>/dev/null \
+              | grep -iE 'ucrt64[/\\]bin' \
+              | sed -n 's/.*=>[[:space:]]*\([^[:space:]]*\.dll\).*/\1/p' \
+              | sort -u \
+              | while IFS= read -r depdll; do
+                  msys_dep=$(cygpath -u "$depdll" 2>/dev/null || printf '%s' "$depdll")
+                  if [ -f "$msys_dep" ]; then cp -f "$msys_dep" .; fi
+                done
+          done
 
           # Mudlet runtime data. Note: in 4.15.1 the Lua scripts live at
           # src/mudlet-lua (not the repository root).
